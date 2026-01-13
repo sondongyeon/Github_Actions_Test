@@ -31,7 +31,7 @@ jobs:
       - name: Stop existing web server
         run: |
           Get-Process -Name "node" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-        shell: pwsh
+        shell: powershell
         continue-on-error: true
 
       - name: Start web server
@@ -44,4 +44,4 @@ jobs:
           Write-Host "Local: http://localhost:9094"
           Write-Host "Network: http://${ip}:9094"
           Write-Host "======================================"
-        shell: pwsh
+        shell: powershell

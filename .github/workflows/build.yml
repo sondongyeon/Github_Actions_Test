@@ -28,5 +28,9 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Build complete
-        run: echo "Build completed successfully!"
+      - name: Start web server
+        run: Start-Process npm -ArgumentList "run","preview","--","--host","0.0.0.0" -WindowStyle Hidden
+        shell: pwsh
+
+      - name: Show access URL
+        run: echo "Web server started at http://localhost:4173"

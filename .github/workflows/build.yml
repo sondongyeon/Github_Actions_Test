@@ -30,17 +30,43 @@ jobs:
 
       - name: Stop existing web server
         run: |
+          # 기존 예약 작업 제거
+          Unregister-ScheduledTask -TaskName "VuePreviewServer" -Confirm:$false -ErrorAction SilentlyContinue
+          # 기존 node 프로세스 종료
           Get-Process -Name "node" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
         shell: powershell
         continue-on-error: true
 
       - name: Start web server
         run: |
-          Start-Process -FilePath "cmd.exe" -ArgumentList "/c","npm run preview -- --host 0.0.0.0 --port 9094" -WorkingDirectory "$PWD" -WindowStyle Minimized
-          Start-Sleep -Seconds 3
+          $workDir = "${{ github.workspace }}"
+          $npmPath = (Get-Command npm).Source
+
+          # 배치 파일 생성
+          $batchContent = @"
+          cd /d "$workDir"
+          "$npmPath" run preview -- --host 0.0.0.0 --port 9094
+          "@
+          $batchPath = "$workDir\start-server.bat"
+          $batchContent | Out-File -FilePath $batchPath -Encoding ASCII
+
+          # 작업 스케줄러로 등록 (시스템 시작 시 자동 실행 + 지금 즉시 실행)
+          $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$batchPath`"" -WorkingDirectory $workDir
+          $trigger = New-ScheduledTaskTrigger -AtStartup
+          $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+          $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+
+          Register-ScheduledTask -TaskName "VuePreviewServer" -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force
+
+          # 즉시 실행
+          Start-ScheduledTask -TaskName "VuePreviewServer"
+          Start-Sleep -Seconds 5
+
+          # 상태 확인
           $ip = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notmatch "^127\." -and $_.IPAddress -notmatch "^169\." } | Select-Object -First 1).IPAddress
           Write-Host "======================================"
-          Write-Host "Web server started!"
+          Write-Host "Web server started as scheduled task!"
           Write-Host "Local: http://localhost:9094"
           Write-Host "Network: http://${ip}:9094"
           Write-Host "======================================"

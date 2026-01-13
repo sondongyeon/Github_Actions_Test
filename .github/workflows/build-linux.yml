@@ -1,0 +1,60 @@
+name: Build on Linux
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: [self-hosted, Linux]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Build
+        run: npm run build
+
+      - name: Stop existing web server
+        run: |
+          pkill -f "npm run preview" || true
+          pkill -f "vite preview" || true
+          sleep 2
+        continue-on-error: true
+
+      - name: Start web server
+        run: |
+          cd ${{ github.workspace }}
+
+          # nohup으로 백그라운드 실행 (job 종료 후에도 유지)
+          nohup npm run preview -- --host 0.0.0.0 --port 9094 > server.log 2>&1 &
+
+          sleep 5
+
+          # 포트 확인
+          if netstat -tuln | grep -q ":9094"; then
+            echo "Port 9094 is now listening"
+          else
+            echo "Warning: Port 9094 not yet listening"
+          fi
+
+          # IP 주소 가져오기
+          IP=$(hostname -I | awk '{print $1}')
+          echo "======================================"
+          echo "Web server started!"
+          echo "Local: http://localhost:9094"
+          echo "Network: http://${IP}:9094"
+          echo "======================================"

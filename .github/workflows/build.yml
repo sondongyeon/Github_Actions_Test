@@ -1,13 +1,13 @@
-name: Build on Self-hosted
+name: Build on Self-hosted (Windows)
 
 on:
   push:
     branches: [main]
-  workflow_dispatch: # 수동 실행 가능
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: [self-hosted, Windows]
 
     steps:
       - name: Checkout
@@ -39,15 +39,15 @@ jobs:
         run: |
           $workDir = "${{ github.workspace }}"
 
-          # 배치 파일 생성
-          $batchContent = @"
-cd /d "$workDir"
-npm run preview -- --host 0.0.0.0 --port 9094
-"@
+          # 배치 파일 생성 (here-string 대신 배열 사용)
+          $lines = @(
+            "cd /d `"$workDir`"",
+            "npm run preview -- --host 0.0.0.0 --port 9094"
+          )
           $batchPath = "$workDir\start-server.bat"
-          $batchContent | Out-File -FilePath $batchPath -Encoding ASCII -Force
+          $lines | Out-File -FilePath $batchPath -Encoding ASCII -Force
 
-          # WMI를 사용하여 독립 프로세스로 실행 (job 종료 후에도 유지됨)
+          # WMI를 사용하여 독립 프로세스로 실행
           $process = ([wmiclass]"Win32_Process").Create("cmd.exe /c `"$batchPath`"")
           Write-Host "Process started with PID: $($process.ProcessId)"
 

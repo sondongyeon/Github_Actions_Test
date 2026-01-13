@@ -1,9 +1,14 @@
-name: Build on Linux
+name: Build on Linux (DooD)
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
+env:
+  IMAGE_NAME: my-web-app
+  CONTAINER_NAME: web-server
+  PORT: 9094
 
 jobs:
   build:
@@ -28,33 +33,51 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Stop existing web server
+      - name: Build Docker image
         run: |
-          pkill -f "npm run preview" || true
-          pkill -f "vite preview" || true
-          sleep 2
-        continue-on-error: true
+          docker build -t $IMAGE_NAME:latest .
+          docker tag $IMAGE_NAME:latest $IMAGE_NAME:${{ github.sha }}
+          echo "Image built: $IMAGE_NAME:latest"
 
-      - name: Start web server
+      - name: Deploy container
         run: |
-          cd ${{ github.workspace }}
+          # 기존 컨테이너 중지 및 제거
+          docker stop $CONTAINER_NAME 2>/dev/null || true
+          docker rm $CONTAINER_NAME 2>/dev/null || true
 
-          # nohup으로 백그라운드 실행 (job 종료 후에도 유지)
-          nohup npm run preview -- --host 0.0.0.0 --port 9094 > server.log 2>&1 &
+          # 새 컨테이너 실행
+          docker run -d \
+            --name $CONTAINER_NAME \
+            -p $PORT:80 \
+            --restart unless-stopped \
+            $IMAGE_NAME:latest
 
-          sleep 5
+          sleep 3
 
-          # 포트 확인
-          if netstat -tuln | grep -q ":9094"; then
-            echo "Port 9094 is now listening"
+          # 상태 확인
+          if docker ps | grep -q $CONTAINER_NAME; then
+            echo "Container is running"
           else
-            echo "Warning: Port 9094 not yet listening"
+            echo "Container failed to start"
+            docker logs $CONTAINER_NAME
+            exit 1
           fi
 
-          # IP 주소 가져오기
+      - name: Cleanup old images
+        run: |
+          # 최근 3개 태그 제외하고 삭제
+          docker images $IMAGE_NAME --format "{{.ID}} {{.CreatedAt}}" | \
+            sort -k2 -r | tail -n +4 | awk '{print $1}' | \
+            xargs -r docker rmi 2>/dev/null || true
+
+          # dangling 이미지 정리
+          docker image prune -f
+
+      - name: Show access info
+        run: |
           IP=$(hostname -I | awk '{print $1}')
           echo "======================================"
-          echo "Web server started!"
-          echo "Local: http://localhost:9094"
-          echo "Network: http://${IP}:9094"
+          echo "Deployment complete!"
+          echo "Local: http://localhost:$PORT"
+          echo "Network: http://${IP}:$PORT"
           echo "======================================"
